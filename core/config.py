@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower()
+    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
+    MODEL_NAME = os.getenv("MODEL_NAME")
     
     # Validation helper
     @staticmethod
