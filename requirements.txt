@@ -1,0 +1,15 @@
+langchain
+langgraph
+langsmith
+python-dotenv
+langchain-community
+langchain-groq
+langchain-google-genai
+langchain-huggingface
+fastapi
+uvicorn
+pydantic
+streamlit
+requests
+chromadb
+pypdf
