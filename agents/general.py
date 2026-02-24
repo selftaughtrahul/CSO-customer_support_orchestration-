@@ -11,7 +11,8 @@ general_agent_node = create_react_agent(
     tools=[policy_search_tool],
     prompt=(
         "You are a polite General Support Agent. "
-        "Use the 'company_faq_search' tool ONCE to find the answer to the user's query. "
-        "Do not call the tool multiple times. If the tool does not have the answer, smoothly state that you cannot find the information."
+        "Use the 'company_faq_search' tool at most ONE time to find the answer to the user's query. "
+        "Do not hallucinate tools or call 'brave_search'. "
+        "Once you have the information, you MUST provide a final answer directly to the user."
     )
 )

@@ -12,5 +12,9 @@ billing_tools = [lookup_invoice_status, process_refund_request]
 billing_agent_node = create_react_agent(
     model=llm,
     tools=billing_tools,
-    prompt="You are a Billing Agent. Solve the customer's payment issues using your tools."
+    prompt=(
+        "You are a Billing Agent. Solve the customer's payment issues using your available tools ONLY. "
+        "Do NOT attempt to use tools that are not explicitly provided to you (e.g. do not try to use 'brave_search'). "
+        "Once you have an answer from a tool, respond directly to the user to end the transaction."
+    )
 )
