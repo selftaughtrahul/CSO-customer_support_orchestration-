@@ -27,14 +27,17 @@ async def process_chat(request: ChatRequest):
     Submits a message to the multi-tiered orchestrator.
     Maintains memory using thread_id.
     """
-    config = {"configurable": {"thread_id": request.thread_id}}
+    config = {
+        "configurable": {"thread_id": request.thread_id},
+        "recursion_limit": 5
+    }
     
     # 1. Check if the thread is currently paused waiting for human input
     current_state = app.get_state(config)
     if current_state.next and "human_escalation" in current_state.next:
         return ChatResponse(
             status="paused",
-            messages=[{"role": "system", "content": "Awaiting human review."}],
+            messages=[{"role": "ai", "content": "Awaiting human review."}],
             category="escalation"
         )
     
@@ -42,11 +45,16 @@ async def process_chat(request: ChatRequest):
     try:
         final_state = app.invoke({"messages": [HumanMessage(content=request.message)]}, config=config)
         
-        # 3. Format response for the frontend (clean up LangChain BaseMessage objects)
+        # 3. Format response for the frontend - return ONLY the latest AI message
         formatted_messages = []
-        for m in final_state.get("messages", []):
-            role = "user" if isinstance(m, HumanMessage) else "ai"
-            formatted_messages.append({"role": role, "content": m.content})
+        all_msgs = final_state.get("messages", [])
+        if all_msgs:
+            last_msg = all_msgs[-1]
+            # Ensure it is an AI message (the final response)
+            if last_msg.type == "ai" or getattr(last_msg, "role", "") == "ai":
+                formatted_messages.append({"role": "ai", "content": last_msg.content})
+            else:
+                 formatted_messages.append({"role": "ai", "content": getattr(last_msg, "content", str(last_msg))})
             
         # 4. Check if the interaction caused a new pause
         new_state = app.get_state(config)

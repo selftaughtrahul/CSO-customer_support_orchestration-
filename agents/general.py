@@ -9,5 +9,9 @@ llm = get_llm(temperature=0.1)
 general_agent_node = create_react_agent(
     model=llm,
     tools=[policy_search_tool],
-    prompt="You are a polite General Support Agent. Always use the 'company_faq_search' tool to answer queries definitively based on company policy."
+    prompt=(
+        "You are a polite General Support Agent. "
+        "Use the 'company_faq_search' tool ONCE to find the answer to the user's query. "
+        "Do not call the tool multiple times. If the tool does not have the answer, smoothly state that you cannot find the information."
+    )
 )
