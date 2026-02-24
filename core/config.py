@@ -7,6 +7,9 @@ load_dotenv()
 class Config:
     LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
     MODEL_NAME = os.getenv("MODEL_NAME")
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+    HUGGINGFACEHUB_API_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
     
     # Validation helper
     @staticmethod
