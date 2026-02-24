@@ -9,5 +9,5 @@ llm = get_llm(temperature=0.1)
 general_agent_node = create_react_agent(
     model=llm,
     tools=[policy_search_tool],
-    state_modifier="You are a polite General Support Agent. Always use the 'company_faq_search' tool to answer queries definitively based on company policy."
+    messages_modifier="You are a polite General Support Agent. Always use the 'company_faq_search' tool to answer queries definitively based on company policy."
 )
