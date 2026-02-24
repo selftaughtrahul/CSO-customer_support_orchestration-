@@ -9,11 +9,14 @@ from core.config import settings
 
 def get_embedding_model():
     if settings.EMBEDDING_PROVIDER == "google":
-        return GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+        model_name = settings.EMBEDDING_MODEL or "models/embedding-001"
+        return GoogleGenerativeAIEmbeddings(model=model_name)
     elif settings.EMBEDDING_PROVIDER == "huggingface":
-        return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        model_name = settings.EMBEDDING_MODEL or "all-MiniLM-L6-v2"
+        return HuggingFaceEmbeddings(model_name=model_name)
     else:
-        return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        model_name = settings.EMBEDDING_MODEL or "all-MiniLM-L6-v2"
+        return HuggingFaceEmbeddings(model_name=model_name)
 
 def build_index():
     pdf_path = os.path.join(settings.DOCS_DIR, "policies.pdf")
