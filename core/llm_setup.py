@@ -26,6 +26,7 @@ class LLMSetup:
         Returns a LangChain BaseChatModel.
         """
         provider = self.config.LLM_PROVIDER
+
         
         # 1. GROQ (Llama 3 / Mixtral)
         if provider == "groq":
