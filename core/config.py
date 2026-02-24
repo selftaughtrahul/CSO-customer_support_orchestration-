@@ -13,6 +13,7 @@ class Config:
     
     # RAG Settings
     EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "huggingface").lower()
+    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL")
     DOCS_DIR = os.getenv("DOCS_DIR", "./docs")
     CHROMA_DB_DIR = os.getenv("CHROMA_DB_DIR", "./chroma_db")
     
