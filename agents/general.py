@@ -1,14 +1,13 @@
 from core.llm_setup import get_llm
 from langgraph.prebuilt import create_react_agent
-
-# Get the configured LLM
-llm = get_llm(temperature=0.7)
+from tools.rag_tools import policy_search_tool
 
 
-def general_agent_node(state):
-    """Handles standard interactions without tools."""
-    llm = get_llm(temperature=0.3)
-    response = llm.invoke([{"role": "system", "content": "You are a friendly general support agent."}] + state["messages"])
-    
-    # Return the AI response wrapped in the messages dict to append to state
-    return {"messages": [response]}
+llm = get_llm(temperature=0.1)
+
+# Compile into a ReAct agent, similar to the billing/tech agents
+general_agent_node = create_react_agent(
+    model=llm,
+    tools=[policy_search_tool],
+    system_prompt="You are a polite General Support Agent. Always use the 'company_faq_search' tool to answer queries definitively based on company policy."
+)
