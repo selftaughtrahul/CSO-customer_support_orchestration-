@@ -11,6 +11,11 @@ class Config:
     GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
     HUGGINGFACEHUB_API_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
     
+    # RAG Settings
+    EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "huggingface").lower()
+    DOCS_DIR = os.getenv("DOCS_DIR", "./docs")
+    CHROMA_DB_DIR = os.getenv("CHROMA_DB_DIR", "./chroma_db")
+    
     # Validation helper
     @staticmethod
     def validate_keys():
@@ -23,3 +28,5 @@ class Config:
 
 # Run validation on import
 Config.validate_keys()
+
+settings = Config()
