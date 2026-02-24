@@ -1,6 +1,6 @@
 # tools/rag_tools.py
 from langchain_core.tools import create_retriever_tool
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from core.rag_setup import get_embedding_model
 from core.config import settings
 

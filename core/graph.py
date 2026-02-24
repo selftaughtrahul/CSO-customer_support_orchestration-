@@ -13,6 +13,8 @@ from langgraph_checkpoint_sqlite import SqliteSaver
 
 
 
+
+
 # 1. Initialize the Graph
 workflow = StateGraph(SupportState)
 
@@ -41,7 +43,8 @@ def route_to_department(state: SupportState):
     
 
 
-memory = SqliteSaver.from_conn_string("threads.sqlite")
+memory = SqliteSaver.from_conn_string("checkpoint.db")
+
 # 4. Draw the Edges
 # Every conversation starts by going to the Router LLM
 workflow.add_edge(START, "router")

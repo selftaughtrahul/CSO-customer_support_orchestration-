@@ -1,7 +1,7 @@
 import os
-from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
 from core.config import settings
@@ -19,20 +19,59 @@ def get_embedding_model():
         return HuggingFaceEmbeddings(model_name=model_name)
 
 def build_index():
-    pdf_path = os.path.join(settings.DOCS_DIR, "policies.pdf")
-    if not os.path.exists(pdf_path):
-        print(f"Create a dummy {pdf_path} to test RAG.")
+    docs_dir = settings.DOCS_DIR
+    if not os.path.exists(docs_dir):
+        print(f"Directory {docs_dir} does not exist.")
         return
-        
-    docs = PyPDFLoader(pdf_path).load()
-    splits = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100).split_documents(docs)
-    
+    all_docs = []
+
+    # 🔁 Walk recursively through directory
+    for root, _, files in os.walk(docs_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+
+            try:
+                # 📄 Handle PDF
+                if file.lower().endswith(".pdf"):
+                    loader = PyPDFLoader(file_path)
+                    all_docs.extend(loader.load())
+
+                # 📃 Handle text files
+                elif file.lower().endswith(".txt"):
+                    loader = TextLoader(file_path)
+                    all_docs.extend(loader.load())
+                    
+                elif file.lower().endswith(".docx"):
+                    loader = TextLoader(file_path)
+                    all_docs.extend(loader.load())
+
+                # You can add more loaders here (docx, csv, etc.)
+
+            except Exception as e:
+                print(f"Error loading {file_path}: {e}")
+
+    if not all_docs:
+        print("No documents found to ingest.")
+        return
+
+    # ✂️ Split documents
+    splits = RecursiveCharacterTextSplitter(
+        chunk_size=500,
+        chunk_overlap=100
+    ).split_documents(all_docs)
+
+    # 🧠 Create / Persist Vector DB
+    if os.path.exists(settings.CHROMA_DB_DIR):
+        import shutil
+        shutil.rmtree(settings.CHROMA_DB_DIR)
+
     Chroma.from_documents(
-        documents=splits, 
+        documents=splits,
         embedding=get_embedding_model(),
         persist_directory=settings.CHROMA_DB_DIR
     )
-    print("Database built.")
+
+    print(f"Database built with {len(splits)} chunks.")
 
 if __name__ == "__main__":
     build_index()
