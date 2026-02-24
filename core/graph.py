@@ -8,8 +8,7 @@ from agents.billing import billing_agent_node
 from agents.tech import tech_agent_node
 
 from agents.escalation import human_escalation_node
-import sqlite3
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph_checkpoint_sqlite import SqliteSaver
 
 
 
@@ -42,8 +41,7 @@ def route_to_department(state: SupportState):
     
 
 
-conn = sqlite3.connect("threads.sqlite", check_same_thread=False)
-memory = SqliteSaver(conn)
+memory = SqliteSaver.from_conn_string("threads.sqlite")
 # 4. Draw the Edges
 # Every conversation starts by going to the Router LLM
 workflow.add_edge(START, "router")
