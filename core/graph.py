@@ -7,6 +7,11 @@ from agents.general import general_agent_node
 from agents.billing import billing_agent_node
 from agents.tech import tech_agent_node
 
+from agents.escalation import human_escalation_node
+import sqlite3
+from langgraph.checkpoint.sqlite import SqliteSaver
+
+
 
 
 # 1. Initialize the Graph
@@ -17,6 +22,7 @@ workflow.add_node("router", router_node)
 workflow.add_node("general_agent", general_agent_node)
 workflow.add_node("billing_agent", billing_agent_node)
 workflow.add_node("tech_agent", tech_agent_node)
+workflow.add_node("human_escalation", human_escalation_node)
 
 
 # 3. Define the custom Routing Logic (The Switchboard)
@@ -26,16 +32,18 @@ def route_to_department(state: SupportState):
     needs_esc = state.get("needs_escalation")
     
     if needs_esc:
-        return END # We will update this later in the HITL module
-    
+        return "human_escalation"    
     if category == "billing":
         return "billing_agent"
     elif category == "technical":
-        return "tech_agent"
+        return "tech_agent"        
     else:
         return "general_agent"
     
-    
+
+
+conn = sqlite3.connect("threads.sqlite", check_same_thread=False)
+memory = SqliteSaver(conn)
 # 4. Draw the Edges
 # Every conversation starts by going to the Router LLM
 workflow.add_edge(START, "router")
@@ -49,7 +57,10 @@ workflow.add_edge("billing_agent", END)
 workflow.add_edge("tech_agent", END)
 
 # 5. Compile the executable application
-app = workflow.compile()
+app = workflow.compile(
+    checkpointer=memory,
+    interrupt_before=["human_escalation"] # Graph freezes here
+)
 
 
 if __name__ == "__main__":
