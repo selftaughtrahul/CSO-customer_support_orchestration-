@@ -4,8 +4,6 @@ from typing import List, Dict, Any
 from langchain_core.messages import HumanMessage
 from core.graph import app  # The compiled LangGraph application
 
-app = FastAPI(title="Multi-Agent Support API", version="1.0.0")
-
 server = FastAPI(
     title="Customer Support Orchestrator",
     version="2.0 Modular Edition"
