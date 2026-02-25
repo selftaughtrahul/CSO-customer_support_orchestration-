@@ -67,9 +67,10 @@ async def process_chat(request: ChatRequest):
         )
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"LLM Routing Error: {str(e)}")
-
 if __name__ == "__main__":
     import uvicorn
     # Make sure to run from project root: python -m api.main
-    uvicorn.run(server, host="0.0.0.0", port=8000)
+    uvicorn.run(server, host="0.0.0.0", port=8005)
