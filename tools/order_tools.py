@@ -21,7 +21,6 @@ STATUS CODES: 3=Approved | 4=Delivered | 5=Cancelled | 6=Failed
 
 from langchain_core.tools import tool
 from core.db import get_db_connection, get_user_role
-from typing import Optional
 from datetime import date
 
 
@@ -83,7 +82,7 @@ def _run_query(query: str, params: tuple):
         conn.close()
 
 
-def _resolve(session_user_id: int, target_user_id: Optional[int] = None):
+def _resolve(session_user_id: int, target_user_id: int = 0):
     """
     Resolve role from DB and return (role, effective_uid).
     Admin  → can target any user (or None = all users)
@@ -91,7 +90,7 @@ def _resolve(session_user_id: int, target_user_id: Optional[int] = None):
     """
     role = get_user_role(session_user_id)
     if role == "admin":
-        return role, target_user_id
+        return role, target_user_id if target_user_id > 0 else None
     return role, session_user_id
 
 
@@ -104,34 +103,34 @@ def get_orders_filtered(
     session_user_id: int,
 
     # ── Status ──────────────────────────────────────────────────────────────
-    status_code: Optional[int] = None,
-    # 3=Approved | 4=Delivered | 5=Cancelled | 6=Failed
+    status_code: int = 0,
+    # 0=Any, 3=Approved | 4=Delivered | 5=Cancelled | 6=Failed
 
     # ── Date ────────────────────────────────────────────────────────────────
     use_today: bool = False,          # True → DATE(order_date) = CURDATE()
-    order_date: Optional[str] = None, # exact date YYYY-MM-DD
-    start_date: Optional[str] = None, # range start YYYY-MM-DD
-    end_date:   Optional[str] = None, # range end   YYYY-MM-DD
+    order_date: str = "",             # exact date YYYY-MM-DD
+    start_date: str = "",             # range start YYYY-MM-DD
+    end_date:   str = "",             # range end   YYYY-MM-DD
 
     # ── Location (admin only) ────────────────────────────────────────────────
-    town_name:          Optional[str] = None,
-    town_id:            Optional[int] = None,
-    route_id:           Optional[int] = None,
-    route_name:         Optional[str] = None,
-    locality_name:      Optional[str] = None,
-    hub_id:             Optional[int] = None,
-    production_unit_id: Optional[int] = None,
-    distributor_type:   Optional[str] = None,
+    town_name:          str = "",
+    town_id:            int = 0,
+    route_id:           int = 0,
+    route_name:         str = "",
+    locality_name:      str = "",
+    hub_id:             int = 0,
+    production_unit_id: int = 0,
+    distributor_type:   str = "",
 
     # ── User ────────────────────────────────────────────────────────────────
-    target_user_id: Optional[int] = None,
+    target_user_id: int = 0,
 
     # ── Misc filters ────────────────────────────────────────────────────────
-    is_subscribed:  Optional[bool]  = None,
-    is_return:      Optional[bool]  = None,
-    is_free_order:  Optional[bool]  = None,
-    min_amount:     Optional[float] = None,
-    order_code:     Optional[str]   = None,
+    is_subscribed:  int = -1,    # -1=Any, 1=Yes, 0=No
+    is_return:      int = -1,    # -1=Any, 1=Yes, 0=No
+    is_free_order:  int = -1,    # -1=Any, 1=Yes, 0=No
+    min_amount:     float = 0.0,
+    order_code:     str = "",
 
     limit: int = 25,  # Reduced default limit from 100 to 25 to save tokens
 ):
@@ -169,66 +168,66 @@ def get_orders_filtered(
         params.append(uid)
 
     # ── status ────────────────────────
-    if status_code is not None:
+    if status_code > 0:
         conditions.append("order_status = %s")
         params.append(status_code)
 
     # ── date ──────────────────────────
     if use_today:
         conditions.append("DATE(order_date) = CURDATE()")
-    elif order_date:
+    elif order_date != "":
         conditions.append("DATE(order_date) = %s")
         params.append(order_date)
-    elif start_date and end_date:
+    elif start_date != "" and end_date != "":
         conditions.append("DATE(order_date) BETWEEN %s AND %s")
         params += [start_date, end_date]
-    elif start_date:
+    elif start_date != "":
         conditions.append("DATE(order_date) >= %s")
         params.append(start_date)
-    elif end_date:
+    elif end_date != "":
         conditions.append("DATE(order_date) <= %s")
         params.append(end_date)
 
     # ── order code ────────────────────
-    if order_code:
+    if order_code != "":
         conditions.append("order_code = %s")
         params.append(order_code)
 
     # ── location (admin only) ─────────
     if role == "admin":
-        if town_id:
+        if town_id > 0:
             conditions.append("town_id = %s"); params.append(town_id)
-        elif town_name:
+        elif town_name != "":
             conditions.append("town_name LIKE %s"); params.append(f"%{town_name}%")
 
-        if route_id:
+        if route_id > 0:
             conditions.append("route_id = %s"); params.append(route_id)
-        elif route_name:
+        elif route_name != "":
             conditions.append("route_name LIKE %s"); params.append(f"%{route_name}%")
 
-        if locality_name:
+        if locality_name != "":
             conditions.append("locality_name LIKE %s"); params.append(f"%{locality_name}%")
 
-        if hub_id:
+        if hub_id > 0:
             conditions.append("hub_id = %s"); params.append(hub_id)
 
-        if production_unit_id:
+        if production_unit_id > 0:
             conditions.append("production_unit_id = %s"); params.append(production_unit_id)
 
-        if distributor_type:
+        if distributor_type != "":
             conditions.append("distributor_type LIKE %s"); params.append(f"%{distributor_type}%")
 
     # ── misc flags ────────────────────
-    if is_subscribed is not None:
-        conditions.append("is_subscribed = %s"); params.append(1 if is_subscribed else 0)
+    if is_subscribed != -1:
+        conditions.append("is_subscribed = %s"); params.append(1 if is_subscribed > 0 else 0)
 
-    if is_return is not None:
-        conditions.append("is_return = %s"); params.append(1 if is_return else 0)
+    if is_return != -1:
+        conditions.append("is_return = %s"); params.append(1 if is_return > 0 else 0)
 
-    if is_free_order is not None:
-        conditions.append("is_free_order = %s"); params.append(1 if is_free_order else 0)
+    if is_free_order != -1:
+        conditions.append("is_free_order = %s"); params.append(1 if is_free_order > 0 else 0)
 
-    if min_amount is not None:
+    if min_amount > 0:
         conditions.append("order_total_amount >= %s"); params.append(min_amount)
 
     where  = " AND ".join(conditions) if conditions else "1=1"
@@ -255,21 +254,21 @@ def get_orders_filtered(
 @tool
 def get_order_details(
     session_user_id: int,
-    order_id: Optional[int] = None,
-    order_code: Optional[str] = None,
+    order_id: int = 0,
+    order_code: str = "",
 ):
     """
     Get full details of ONE specific order by order_id OR order_code.
     Customers can only view their own orders.
     """
     role, _ = _resolve(session_user_id)
-    if not order_id and not order_code:
+    if order_id <= 0 and order_code == "":
         return "Please provide order_id or order_code."
 
     conds, params = [], []
-    if order_id:
+    if order_id > 0:
         conds.append("id = %s"); params.append(order_id)
-    if order_code:
+    if order_code != "":
         conds.append("order_code = %s"); params.append(order_code)
 
     where = " OR ".join(conds)
@@ -288,18 +287,18 @@ def get_order_details(
 @tool
 def get_order_items(
     session_user_id: int,
-    order_id: Optional[int] = None,
-    order_code: Optional[str] = None,
+    order_id: int = 0,
+    order_code: str = "",
 ):
     """
     Get all products/items inside a specific order.
     Customers can only view their own orders.
     """
     role, _ = _resolve(session_user_id)
-    if not order_id and not order_code:
+    if order_id <= 0 and order_code == "":
         return "Please provide order_id or order_code."
 
-    if order_id:
+    if order_id > 0:
         base, params = "o.id = %s", [order_id]
     else:
         base, params = "o.order_code = %s", [order_code]
@@ -327,7 +326,7 @@ def get_order_items(
 @tool
 def get_outstanding_amount(
     session_user_id: int,
-    target_user_id: Optional[int] = None,
+    target_user_id: int = 0,
 ):
     """
     Get outstanding amount, wallet balance, and credit limit for a user.
@@ -354,10 +353,10 @@ def get_outstanding_amount(
 @tool
 def get_subscription_orders(
     session_user_id: int,
-    target_user_id: Optional[int] = None,
-    plan_type: Optional[str] = None,   # 'daily','alternate_day','double_alternate','custom'
-    status: Optional[str] = None,      # 'active','cancelled', etc.
-    subscription_id: Optional[int] = None,
+    target_user_id: int = 0,
+    plan_type: str = "",   # 'daily','alternate_day','double_alternate','custom'
+    status: str = "",      # 'active','cancelled', etc.
+    subscription_id: int = 0,
 ):
     """
     Get subscription plans from sp_subscriptions.
@@ -370,11 +369,11 @@ def get_subscription_orders(
     conds, params = [], []
     if uid:
         conds.append("user_id = %s"); params.append(uid)
-    if plan_type:
+    if plan_type != "":
         conds.append("plan_type = %s"); params.append(plan_type)
-    if status:
+    if status != "":
         conds.append("status = %s"); params.append(status)
-    if subscription_id:
+    if subscription_id > 0:
         conds.append("id = %s"); params.append(subscription_id)
 
     where = " AND ".join(conds) if conds else "1=1"
@@ -395,18 +394,18 @@ def get_subscription_orders(
 @tool
 def get_cancelled_order_reason(
     session_user_id: int,
-    order_id: Optional[int] = None,
-    order_code: Optional[str] = None,
+    order_id: int = 0,
+    order_code: str = "",
 ):
     """
     Find out why a specific order was cancelled, who cancelled it, and when.
     Customers can only check their own orders.
     """
     role, _ = _resolve(session_user_id)
-    if not order_id and not order_code:
+    if order_id <= 0 and order_code == "":
         return "Please provide order_id or order_code."
 
-    if order_id:
+    if order_id > 0:
         base, params = "id = %s", [order_id]
     else:
         base, params = "order_code = %s", [order_code]
@@ -430,7 +429,7 @@ def get_cancelled_order_reason(
 @tool
 def get_daily_sales_summary(
     session_user_id: int,
-    summary_date: Optional[str] = None,   # YYYY-MM-DD, defaults to today
+    summary_date: str = "",   # YYYY-MM-DD, defaults to today
 ):
     """
     [ADMIN ONLY] Complete daily sales dashboard:
@@ -442,7 +441,7 @@ def get_daily_sales_summary(
     if role != "admin":
         return "Access denied: daily sales summary requires admin access (user_type=1)."
 
-    d = summary_date or str(date.today())
+    d = summary_date if summary_date != "" else str(date.today())
 
     order_summary = _run_query("""
         SELECT
@@ -488,8 +487,8 @@ def get_top_report(
     session_user_id: int,
     report_type: str,        # 'customers' | 'products' | 'towns'
     limit: int = 10,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str = "",
+    end_date: str = "",
 ):
     """
     [ADMIN ONLY] Generate a top-N leaderboard report.
@@ -507,7 +506,7 @@ def get_top_report(
 
     date_filter = ""
     params: list = []
-    if start_date and end_date:
+    if start_date != "" and end_date != "":
         date_filter = "AND DATE(o.order_date) BETWEEN %s AND %s"
         params += [start_date, end_date]
 
@@ -565,18 +564,18 @@ def get_sales_summary(
     session_user_id: int,
     # ── Date ──────────────────────────────────────────────────────────────────
     use_today:   bool = False,
-    start_date:  Optional[str] = None,   # YYYY-MM-DD
-    end_date:    Optional[str] = None,   # YYYY-MM-DD
+    start_date:  str = "",   # YYYY-MM-DD
+    end_date:    str = "",   # YYYY-MM-DD
     # ── Filters ───────────────────────────────────────────────────────────────
-    town_name:          Optional[str] = None,
-    town_id:            Optional[int] = None,
-    route_name:         Optional[str] = None,
-    route_id:           Optional[int] = None,
-    status_code:        Optional[int] = None,  # 3/4/5/6
-    is_subscribed:      Optional[bool] = None,
-    target_user_id:     Optional[int] = None,
+    town_name:          str = "",
+    town_id:            int = 0,
+    route_name:         str = "",
+    route_id:           int = 0,
+    status_code:        int = 0,  # 3/4/5/6
+    is_subscribed:      int = -1, # -1=Any, 1=Yes, 0=No
+    target_user_id:     int = 0,
     # ── Group by dimension ──────────────────────────────────────────────────────
-    group_by: Optional[str] = None,  # 'town' | 'route' | 'status' | 'date' | None (=total only)
+    group_by: str = "",  # 'town' | 'route' | 'status' | 'date' | '' (=total only)
 ):
     """
     [ADMIN for location filters] Aggregation tool for TOTAL / SUM queries.
@@ -596,7 +595,7 @@ def get_sales_summary(
     """
     role, uid = _resolve(session_user_id, target_user_id)
 
-    location_requested = any([town_name, town_id, route_name, route_id])
+    location_requested = any([town_name != "", town_id > 0, route_name != "", route_id > 0])
     if location_requested and role != "admin":
         return "Access denied: location filters require admin access."
 
@@ -608,26 +607,26 @@ def get_sales_summary(
 
     if use_today:
         conditions.append("DATE(order_date) = CURDATE()")
-    elif start_date and end_date:
+    elif start_date != "" and end_date != "":
         conditions.append("DATE(order_date) BETWEEN %s AND %s"); params += [start_date, end_date]
-    elif start_date:
+    elif start_date != "":
         conditions.append("DATE(order_date) >= %s"); params.append(start_date)
-    elif end_date:
+    elif end_date != "":
         conditions.append("DATE(order_date) <= %s"); params.append(end_date)
 
-    if status_code is not None:
+    if status_code > 0:
         conditions.append("order_status = %s"); params.append(status_code)
-    if is_subscribed is not None:
-        conditions.append("is_subscribed = %s"); params.append(1 if is_subscribed else 0)
+    if is_subscribed != -1:
+        conditions.append("is_subscribed = %s"); params.append(1 if is_subscribed > 0 else 0)
 
     if role == "admin":
-        if town_id:
+        if town_id > 0:
             conditions.append("town_id = %s"); params.append(town_id)
-        elif town_name:
+        elif town_name != "":
             conditions.append("town_name LIKE %s"); params.append(f"%{town_name}%")
-        if route_id:
+        if route_id > 0:
             conditions.append("route_id = %s"); params.append(route_id)
-        elif route_name:
+        elif route_name != "":
             conditions.append("route_name LIKE %s"); params.append(f"%{route_name}%")
 
     where = " AND ".join(conditions) if conditions else "1=1"
