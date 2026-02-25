@@ -4,7 +4,7 @@ import requests
 import uuid
 
 # Backend Address
-API_URL = "http://localhost:8000/api/v1/chat"
+API_URL = "http://localhost:8005/api/v1/chat"
 
 st.set_page_config(page_title="AI Customer Support (Modular)", layout="centered")
 st.title("🛡️ Multi-Tiered AI Support")
