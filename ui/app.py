@@ -5,6 +5,9 @@ import hashlib
 import base64
 import sys
 import os
+import io
+import re
+import pandas as pd
 
 # Add the project root to sys.path so we can import core.db securely
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -13,7 +16,84 @@ from core.db import get_db_connection
 # Backend Address
 API_URL = "http://localhost:8005/api/v1/chat"
 
-st.set_page_config(page_title="AI Customer Support (Modular)", layout="centered")
+st.set_page_config(page_title="AI Customer Support (Modular)", layout="wide")
+
+# ---------------------------------------------------------------------------
+# Smart response renderer — detects tables and renders them as DataFrames
+# ---------------------------------------------------------------------------
+
+def _parse_markdown_table(md_text: str):
+    """
+    Extract a Markdown table from a string and return a pandas DataFrame.
+    Returns None if no valid table is found.
+    """
+    lines = [l.rstrip() for l in md_text.splitlines()]
+    table_lines = [l for l in lines if l.startswith("|")]
+    if len(table_lines) < 2:
+        return None
+    # Remove separator row (|---|---|)
+    data_lines = [l for l in table_lines if not re.match(r"^\|[-\s|]+\|$", l)]
+    if len(data_lines) < 1:
+        return None
+    try:
+        rows = []
+        for line in data_lines:
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            rows.append(cells)
+        df = pd.DataFrame(rows[1:], columns=rows[0])
+        return df
+    except Exception:
+        return None
+
+
+def render_ai_response(content: str, label: str = ""):
+    """
+    Render an AI message intelligently:
+    - If it contains a Markdown table → show as st.dataframe() with Excel download
+    - Otherwise → show as st.markdown()
+    """
+    # Safely coerce to string — prevents TypeError if content is list/dict
+    if not isinstance(content, str):
+        content = str(content)
+    if not content.strip():
+        return
+    # Split on the first table block
+    table_pattern = re.compile(r"((?:^\|.+\|\n?)+)", re.MULTILINE)
+    match = table_pattern.search(content)
+
+    if match:
+        before = content[:match.start()].strip()
+        after  = content[match.end():].strip()
+        table_md = match.group(0)
+
+        if before:
+            st.markdown(before)
+
+        df = _parse_markdown_table(table_md)
+        if df is not None and not df.empty:
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+            )
+            # Excel download button
+            buf = io.BytesIO()
+            with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+                df.to_excel(writer, index=False, sheet_name="Orders")
+            st.download_button(
+                label="⬇️ Download as Excel",
+                data=buf.getvalue(),
+                file_name=f"{label or 'orders'}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=f"dl_{hash(content)}",
+            )
+        else:
+            st.markdown(table_md)   # fallback
+
+        if after:
+            st.markdown(after)
+    else:
+        st.markdown(content)
 
 # --- AUTHENTICATION HELPER FUNCTIONS ---
 def check_django_password(password: str, encoded: str) -> bool:
@@ -71,7 +151,7 @@ def check_customer_phone(phone):
         
     try:
         cursor = conn.cursor(dictionary=True)
-        query = "SELECT id, first_name, last_name FROM sp_users WHERE primary_contact_number = %s LIMIT 1"
+        query = "SELECT id, first_name, last_name FROM sp_users WHERE status=1 and primary_contact_number = %s LIMIT 1"
         cursor.execute(query, (phone,))
         user = cursor.fetchone()
         return user
@@ -107,6 +187,13 @@ def logout():
     st.session_state.temp_user_data = None
     st.session_state.user_data = None
     st.session_state.messages = []
+    st.session_state.thread_id = str(uuid.uuid4())  # fresh thread on logout
+    st.rerun()
+
+def new_chat():
+    """Start a brand-new thread — clears cached LangGraph state."""
+    st.session_state.messages = []
+    st.session_state.thread_id = str(uuid.uuid4())
     st.rerun()
 
 # ==========================================
@@ -199,7 +286,11 @@ else:
             st.caption("Your inquiries are securely restricted to your own personal Account ID.")
             
         st.write("---")
-        st.button("Logout", on_click=logout)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.button("🔄 New Chat", on_click=new_chat, use_container_width=True)
+        with col2:
+            st.button("🚪 Logout", on_click=logout, use_container_width=True)
 
     st.title("🛡️ Multi-Tiered AI Support")
     if is_admin:
@@ -210,7 +301,10 @@ else:
     # Display entire history
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
-            st.write(msg["content"])
+            if msg["role"] == "ai":
+                render_ai_response(msg["content"])
+            else:
+                st.markdown(msg["content"])
             
     # User prompt
     if prompt := st.chat_input("Describe your issue..."):
@@ -219,9 +313,9 @@ else:
         # If is_admin is True: we don't restrict the agent. It can freely query whatever user id the admin asks.
         # If is_admin is False: we secretly lock the prompt's ID parameter context securely around their own ID.
         if is_admin:
-            enriched_prompt = f"[ADMIN USER PRIVILEGES ENABLED]. Answer the following admin request: {prompt}"
+            enriched_prompt = f"[Admin session | session_user_id={user_id}] {prompt}"
         else:
-            enriched_prompt = f"[{user_name}'s Account ID is strictly: {user_id}]. {prompt}"
+            enriched_prompt = f"[Customer session | session_user_id={user_id}] {prompt}"
         
         # Render user prompt locally immediately (we render just the plain 'prompt')
         st.session_state.messages.append({"role": "user", "content": prompt, "enriched": enriched_prompt})
@@ -233,8 +327,12 @@ else:
             try:
                 resp = requests.post(
                     API_URL, 
-                    # Send the ENRICHED prompt to the backend orchestration agent
-                    json={"thread_id": st.session_state.thread_id, "message": enriched_prompt}
+                    # Send the ENRICHED prompt + user_id so the backend can resolve role from DB
+                    json={
+                        "thread_id": st.session_state.thread_id,
+                        "message": enriched_prompt,
+                        "user_id": user_id,   # ← role resolved from sp_users.user_type in backend
+                    }
                 )
                 resp.raise_for_status()
                 data = resp.json()
@@ -253,8 +351,7 @@ else:
                     if ai_msg["role"] == "ai":
                         st.session_state.messages.append({"role": "ai", "content": ai_msg["content"]})
                         with st.chat_message("ai"):
-                            st.write(ai_msg["content"])
-                            # Visual identifier to confirm what mode processed the reply
+                            render_ai_response(ai_msg["content"], label=handled_by)
                             role_identifier = "Web Admin" if is_admin else "Customer"
                             st.caption(f"*Processed via '{handled_by}' pathway at {role_identifier} clearance.*")
 
