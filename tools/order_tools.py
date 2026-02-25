@@ -527,17 +527,135 @@ def get_top_report(
         return f"Unknown report_type '{report_type}'. Use: 'customers', 'products', or 'towns'."
 
 
+# ===========================================================================
+# 9. FLEXIBLE SALES AGGREGATION  [ADMIN ONLY for location filters]
+# ===========================================================================
+
+@tool
+def get_sales_summary(
+    session_user_id: int,
+    # ── Date ──────────────────────────────────────────────────────────────────
+    use_today:   bool = False,
+    start_date:  Optional[str] = None,   # YYYY-MM-DD
+    end_date:    Optional[str] = None,   # YYYY-MM-DD
+    # ── Filters ───────────────────────────────────────────────────────────────
+    town_name:          Optional[str] = None,
+    town_id:            Optional[int] = None,
+    route_name:         Optional[str] = None,
+    route_id:           Optional[int] = None,
+    status_code:        Optional[int] = None,  # 3/4/5/6
+    is_subscribed:      Optional[bool] = None,
+    target_user_id:     Optional[int] = None,
+    # ── Group by dimension ──────────────────────────────────────────────────────
+    group_by: Optional[str] = None,  # 'town' | 'route' | 'status' | 'date' | None (=total only)
+):
+    """
+    [ADMIN for location filters] Aggregation tool for TOTAL / SUM queries.
+
+    Use this when the user asks for TOTALS, SUMS, COUNTS, or REVENUE — NOT individual rows.
+    Examples:
+      "Total sales today from Chandigarh"
+          → use_today=True, town_name='Chandigarh'
+      "Revenue from North route this week"
+          → route_name='North', start_date=..., end_date=...
+      "How many orders today?"
+          → use_today=True
+      "Total delivered orders this month"
+          → status_code=4, start_date=first_of_month, end_date=today
+      "Town-wise sales today"
+          → use_today=True, group_by='town'
+    """
+    role, uid = _resolve(session_user_id, target_user_id)
+
+    location_requested = any([town_name, town_id, route_name, route_id])
+    if location_requested and role != "admin":
+        return "Access denied: location filters require admin access."
+
+    conditions: list = []
+    params:     list = []
+
+    if uid:
+        conditions.append("user_id = %s"); params.append(uid)
+
+    if use_today:
+        conditions.append("DATE(order_date) = CURDATE()")
+    elif start_date and end_date:
+        conditions.append("DATE(order_date) BETWEEN %s AND %s"); params += [start_date, end_date]
+    elif start_date:
+        conditions.append("DATE(order_date) >= %s"); params.append(start_date)
+    elif end_date:
+        conditions.append("DATE(order_date) <= %s"); params.append(end_date)
+
+    if status_code is not None:
+        conditions.append("order_status = %s"); params.append(status_code)
+    if is_subscribed is not None:
+        conditions.append("is_subscribed = %s"); params.append(1 if is_subscribed else 0)
+
+    if role == "admin":
+        if town_id:
+            conditions.append("town_id = %s"); params.append(town_id)
+        elif town_name:
+            conditions.append("town_name LIKE %s"); params.append(f"%{town_name}%")
+        if route_id:
+            conditions.append("route_id = %s"); params.append(route_id)
+        elif route_name:
+            conditions.append("route_name LIKE %s"); params.append(f"%{route_name}%")
+
+    where = " AND ".join(conditions) if conditions else "1=1"
+
+    # ── Build SELECT based on group_by ─────────────────────────────────────────────
+    dim_map = {
+        "town":   "town_name",
+        "route":  "route_name",
+        "status": "order_status",
+        "date":   "DATE(order_date)",
+    }
+    dim_col = dim_map.get(group_by, "") if group_by else ""
+
+    if dim_col:
+        query = f"""
+            SELECT {dim_col} AS dimension,
+                   COUNT(*)                  AS order_count,
+                   SUM(order_total_amount)   AS total_revenue,
+                   SUM(CASE WHEN order_status=4 THEN order_total_amount ELSE 0 END) AS delivered_revenue,
+                   SUM(CASE WHEN order_status=4 THEN 1 ELSE 0 END) AS delivered_count,
+                   SUM(CASE WHEN order_status=5 THEN 1 ELSE 0 END) AS cancelled_count
+            FROM sp_secondary_orders
+            WHERE {where}
+            GROUP BY {dim_col}
+            ORDER BY total_revenue DESC
+        """
+    else:
+        query = f"""
+            SELECT COUNT(*)                  AS total_orders,
+                   SUM(order_total_amount)   AS total_revenue,
+                   SUM(CASE WHEN order_status=3 THEN order_total_amount ELSE 0 END) AS approved_revenue,
+                   SUM(CASE WHEN order_status=4 THEN order_total_amount ELSE 0 END) AS delivered_revenue,
+                   SUM(CASE WHEN order_status=5 THEN order_total_amount ELSE 0 END) AS cancelled_revenue,
+                   SUM(CASE WHEN order_status=3 THEN 1 ELSE 0 END) AS approved_count,
+                   SUM(CASE WHEN order_status=4 THEN 1 ELSE 0 END) AS delivered_count,
+                   SUM(CASE WHEN order_status=5 THEN 1 ELSE 0 END) AS cancelled_count,
+                   SUM(CASE WHEN order_status=6 THEN 1 ELSE 0 END) AS failed_count
+            FROM sp_secondary_orders
+            WHERE {where}
+        """
+
+    rows = _run_query(query, tuple(params))
+    return rows if rows else "No data found matching the given filters."
+
+
 # ---------------------------------------------------------------------------
 # ALL_ORDER_TOOLS — import this in agents/order.py
 # ---------------------------------------------------------------------------
 
 ALL_ORDER_TOOLS = [
-    get_orders_filtered,       # ★ main workhorse — handles 95% of queries
-    get_order_details,         # single-order full detail
-    get_order_items,           # items inside an order
-    get_outstanding_amount,    # user financial info
-    get_subscription_orders,   # subscription plans
-    get_cancelled_order_reason,# why was it cancelled
-    get_daily_sales_summary,   # [admin] daily dashboard
-    get_top_report,            # [admin] top customers/products/towns
+    get_orders_filtered,        # ★ individual order rows with any filter combo
+    get_sales_summary,          # ★ TOTALS/SUMS/COUNTS — use for "total sales", "revenue" queries
+    get_order_details,          # single-order full detail
+    get_order_items,            # items inside an order
+    get_outstanding_amount,     # user financial info
+    get_subscription_orders,    # subscription plans
+    get_cancelled_order_reason, # why was it cancelled
+    get_daily_sales_summary,    # [admin] daily dashboard
+    get_top_report,             # [admin] top customers/products/towns
 ]
