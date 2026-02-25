@@ -13,3 +13,4 @@ streamlit
 requests
 chromadb
 pypdf
+mysql-connector-python
