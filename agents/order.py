@@ -1,6 +1,7 @@
 from core.llm_setup import get_llm
 from tools.order_tools import ALL_ORDER_TOOLS
 from langgraph.prebuilt import create_react_agent
+from langchain_core.messages import SystemMessage
 
 llm = get_llm(temperature=0)
 
@@ -15,39 +16,42 @@ Always pass `session_user_id` (from the message context) into every tool call.
 
 ## YOUR 8 TOOLS — USE EXACTLY THESE NAMES:
 
-1. **get_orders_filtered** ← USE FOR ALL ORDER LIST QUERIES
-   - The primary tool. Combine any filters: status_code, date, location, user, flags.
+1. **get_orders_filtered** ← USE FOR ORDER LIST QUERIES (returns individual rows)
+   - Use when user wants to SEE orders: list, browse, find, show orders
    - STATUS CODES: 3=Approved | 4=Delivered | 5=Cancelled | 6=Failed
    - DATE: use_today=True for "today", or provide start_date/end_date (YYYY-MM-DD)
    - LOCATION (admin only): town_name, route_name, locality_name, hub_id, etc.
-   - EXAMPLES:
-     * "Show approved orders today in Chandigarh"
-       → get_orders_filtered(session_user_id=X, status_code=3, use_today=True, town_name="Chandigarh")
-     * "My last 10 orders"
-       → get_orders_filtered(session_user_id=X, limit=10)
-     * "Delivered orders last week"
-       → get_orders_filtered(session_user_id=X, status_code=4, start_date="...", end_date="...")
-     * "Cancelled subscription orders this month"
-       → get_orders_filtered(session_user_id=X, status_code=5, is_subscribed=True, start_date="...", end_date="...")
-     * "Show orders above 5000 from Mohali"
-       → get_orders_filtered(session_user_id=X, min_amount=5000, town_name="Mohali")
-     * "All orders for user 1001" (admin)
-       → get_orders_filtered(session_user_id=X, target_user_id=1001)
 
-2. **get_order_details** — full detail of ONE order (by order_id or order_code)
+2. **get_sales_summary** ← USE FOR TOTAL/SUM/COUNT/REVENUE QUERIES (returns aggregates)
+   - Use when user wants NUMBERS: total, sum, revenue, how many, count, amount
+   - Examples:
+     * "Total sales today from Chandigarh"
+       → get_sales_summary(session_user_id=X, use_today=True, town_name="Chandigarh")
+     * "How many orders this month?"
+       → get_sales_summary(session_user_id=X, start_date="...", end_date="...")
+     * "Revenue from North route last week"
+       → get_sales_summary(session_user_id=X, route_name="North", start_date=..., end_date=...)
+     * "Town-wise sales today" (breakdown)
+       → get_sales_summary(session_user_id=X, use_today=True, group_by='town')
+     * "Delivered revenue this month"
+       → get_sales_summary(session_user_id=X, status_code=4, start_date=..., end_date=...)
 
-3. **get_order_items** — products/items inside ONE order (by order_id or order_code)
+   ⚠️ KEY RULE: If the user says "total", "sum", "revenue", "how much", "how many", "count",
+   "kitna", "kitne" → ALWAYS use get_sales_summary, NOT get_orders_filtered.
 
-4. **get_outstanding_amount** — outstanding amount, wallet, credit limit for a user
+3. **get_order_details** — full detail of ONE order (by order_id or order_code)
 
-5. **get_subscription_orders** — subscription plans (plan_type, status, subscription_id)
+4. **get_order_items** — products/items inside ONE order (by order_id or order_code)
 
-6. **get_cancelled_order_reason** — why/who/when a specific order was cancelled
+5. **get_outstanding_amount** — outstanding amount, wallet, credit limit for a user
 
-7. **get_daily_sales_summary** — [ADMIN] today's complete sales dashboard with product breakdown
-   → get_daily_sales_summary(session_user_id=X)  or  with summary_date="YYYY-MM-DD"
+6. **get_subscription_orders** — subscription plans (plan_type, status, subscription_id)
 
-8. **get_top_report** — [ADMIN] leaderboard: report_type='customers'|'products'|'towns', limit=N
+7. **get_cancelled_order_reason** — why/who/when a specific order was cancelled
+
+8. **get_daily_sales_summary** — [ADMIN] today's complete sales dashboard with product breakdown
+
+9. **get_top_report** — [ADMIN] leaderboard: report_type='customers'|'products'|'towns', limit=N
 
 ## HINGLISH MAPPING:
 - "Aaj ka order" → use_today=True
@@ -80,8 +84,31 @@ Always pass `session_user_id` (from the message context) into every tool call.
 - Map status codes to words: 3→Approved, 4→Delivered, 5→Cancelled, 6→Failed
 """
 
+# ---------------------------------------------------------------------------
+# pre_model_hook for LangGraph 1.0.9
+# Runs before every LLM call. Returns {"llm_input_messages": [...]} which is
+# used as LLM input WITHOUT modifying the stored state messages.
+# This trims conversation history to prevent Groq 12K TPM 413 errors.
+# ---------------------------------------------------------------------------
+
+def _pre_model_hook(state):
+    """
+    LangGraph 1.0.9 pre_model_hook:
+    - Returns llm_input_messages = system prompt + last 6 conversation messages
+    - Does NOT modify state (history is preserved in checkpointer)
+    - Prevents 413 'Request too large' errors with Groq's 12K TPM limit
+    """
+    messages   = state["messages"] if isinstance(state, dict) else list(state)
+    other_msgs = [m for m in messages if not isinstance(m, SystemMessage)]
+    trimmed    = other_msgs[-6:] if len(other_msgs) > 6 else other_msgs
+    return {
+        "llm_input_messages": [SystemMessage(content=ORDER_AGENT_PROMPT)] + trimmed
+    }
+
+
 order_agent_node = create_react_agent(
     model=llm,
     tools=ALL_ORDER_TOOLS,
-    prompt=ORDER_AGENT_PROMPT,
+    prompt=ORDER_AGENT_PROMPT,     # system message for full runs
+    pre_model_hook=_pre_model_hook, # trims history before every LLM call
 )
