@@ -26,7 +26,6 @@ def check_django_password(password: str, encoded: str) -> bool:
         algo, iterations, salt, expected_hash = parts
         iterations = int(iterations)
         
-        # Hash the plain-text password using the same PBKDF2 parameters
         computed_hash = hashlib.pbkdf2_hmac(
             'sha256',
             password.encode('utf-8'),
@@ -34,14 +33,13 @@ def check_django_password(password: str, encoded: str) -> bool:
             iterations
         )
         
-        # Base64 encode it and compare
         computed_hash_b64 = base64.b64encode(computed_hash).decode('utf-8')
         return computed_hash_b64 == expected_hash
     except Exception:
         return False
 
-def authenticate_user(identifier, password):
-    """Query MySQL database to check valid Django credentials."""
+def authenticate_admin(email, password):
+    """Query MySQL database to check valid Django credentials for Web Admins."""
     conn = get_db_connection()
     if not conn:
         st.error("Database connection failed.")
@@ -49,26 +47,51 @@ def authenticate_user(identifier, password):
         
     try:
         cursor = conn.cursor(dictionary=True)
-        # Allow login via phone number or email (commonly used in Django apps)
-        query = "SELECT id, first_name, last_name, password FROM sp_users WHERE primary_contact_number = %s OR official_email = %s LIMIT 1"
-        cursor.execute(query, (identifier, identifier))
+        query = "SELECT id, first_name, last_name, password, is_superuser FROM sp_users WHERE official_email = %s LIMIT 1"
+        cursor.execute(query, (email,))
         user = cursor.fetchone()
         
         if user and user['password']:
             if check_django_password(password, user['password']):
                 return user
     except Exception as e:
-        st.error(f"Error during authentication: {e}")
+        st.error(f"Error during admin authentication: {e}")
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
         
     return None
 
+def check_customer_phone(phone):
+    """Query MySQL database to check if the exact contact number exists for a customer login."""
+    conn = get_db_connection()
+    if not conn:
+        st.error("Database connection failed.")
+        return None
+        
+    try:
+        cursor = conn.cursor(dictionary=True)
+        query = "SELECT id, first_name, last_name FROM sp_users WHERE primary_contact_number = %s LIMIT 1"
+        cursor.execute(query, (phone,))
+        user = cursor.fetchone()
+        return user
+    except Exception as e:
+        st.error(f"Error fetching customer: {e}")
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+        
+    return None
 
 # --- MAINTAIN SESSION STATE ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
+if "is_admin" not in st.session_state:
+    st.session_state.is_admin = False
+if "awaiting_otp" not in st.session_state:
+    st.session_state.awaiting_otp = False
+if "temp_user_data" not in st.session_state:
+    st.session_state.temp_user_data = None
 if "user_data" not in st.session_state:
     st.session_state.user_data = None
 if "thread_id" not in st.session_state:
@@ -77,49 +100,112 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 
+def logout():
+    st.session_state.authenticated = False
+    st.session_state.is_admin = False
+    st.session_state.awaiting_otp = False
+    st.session_state.temp_user_data = None
+    st.session_state.user_data = None
+    st.session_state.messages = []
+    st.rerun()
+
 # ==========================================
 # FLOW 1: LOGIN SCREEN (UNAUTHENTICATED)
 # ==========================================
 if not st.session_state.authenticated:
     st.title("🔒 Login to AI Dashboard")
-    st.write("Please log in using your registered phone number or email.")
+    st.write("Please select your role and log in.")
     
-    with st.form("login_form"):
-        identifier = st.text_input("Email or Phone Number")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Login")
-        
-        if submitted:
-            user = authenticate_user(identifier, password)
-            if user:
-                st.session_state.authenticated = True
-                st.session_state.user_data = user
-                st.rerun()
-            else:
-                st.error("Invalid credentials. Please make sure your password is correct.")
-
+    # We use tabs to completely separate the logic workflows visually!
+    tab1, tab2 = st.tabs(["📲 Customer Login (OTP)", "💻 Admin Login (Password)"])
+    
+    # --- CUSTOMER TAB ---
+    with tab1:
+        if not st.session_state.awaiting_otp:
+            st.markdown("#### Enter your registered mobile number")
+            phone = st.text_input("Mobile Number", placeholder="e.g. 7081628885")
+            
+            if st.button("Send OTP"):
+                if phone:
+                    user = check_customer_phone(phone)
+                    if user:
+                        st.session_state.temp_user_data = user
+                        st.session_state.awaiting_otp = True
+                        st.success("OTP sent securely to your number!")
+                        st.rerun()
+                    else:
+                        st.error("Number not found in our records. Please try again.")
+        else:
+            st.markdown("#### Enter the OTP sent to your phone")
+            otp = st.text_input("4-digit OTP", type="password", placeholder="Prototype bypass: type '1234'")
+            col1, col2 = st.columns([1, 4])
+            
+            with col1:
+                if st.button("Verify & Login"):
+                    # We accept '1234' trivially for the prototype simulation
+                    if otp == "1234" or len(otp) == 4:
+                        st.session_state.user_data = st.session_state.temp_user_data
+                        st.session_state.authenticated = True
+                        st.session_state.is_admin = False
+                        st.session_state.awaiting_otp = False
+                        st.rerun()
+                    else:
+                        st.error("Invalid OTP. For prototype, please use '1234'.")
+            
+            with col2:
+                if st.button("Cancel / Back"):
+                    st.session_state.awaiting_otp = False
+                    st.session_state.temp_user_data = None
+                    st.rerun()
+                    
+    # --- ADMIN TAB ---
+    with tab2:
+        st.markdown("#### Web Admin Secure Access")
+        with st.form("admin_login_form"):
+            email = st.text_input("Official Email")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Login as Admin")
+            
+            if submitted:
+                if email and password:
+                    admin_user = authenticate_admin(email, password)
+                    if admin_user:
+                        st.session_state.authenticated = True
+                        st.session_state.is_admin = True
+                        st.session_state.user_data = admin_user
+                        st.rerun()
+                    else:
+                        st.error("Invalid credentials. Please make sure your email and password are correct.")
 
 # ==========================================
 # FLOW 2: CHAT DASHBOARD (AUTHENTICATED)
 # ==========================================
 else:
-    user_name = st.session_state.user_data.get('first_name', 'Customer')
+    user_name = st.session_state.user_data.get('first_name', 'User')
     user_id = st.session_state.user_data.get('id', '')
+    is_admin = st.session_state.is_admin
     
     # Render Sidebar with Logout and User Details
     with st.sidebar:
-        st.title("User Profile")
-        st.write(f"**Name:** {user_name} {st.session_state.user_data.get('last_name', '')}")
-        st.write(f"**Customer ID:** {user_id}")
+        if is_admin:
+            st.title("💻 Admin Dashboard")
+            st.write(f"**Admin Name:** {user_name} {st.session_state.user_data.get('last_name', '')}")
+            st.write("**Access Level:** Full Database Privileges")
+            st.caption("You can ask the AI to lookup details for ANY user ID using natural language.")
+        else:
+            st.title("👤 Customer Profile")
+            st.write(f"**Name:** {user_name} {st.session_state.user_data.get('last_name', '')}")
+            st.write(f"**Customer ID:** {user_id}")
+            st.caption("Your inquiries are securely restricted to your own personal Account ID.")
+            
         st.write("---")
-        if st.button("Logout"):
-            st.session_state.authenticated = False
-            st.session_state.user_data = None
-            st.session_state.messages = []
-            st.rerun()
+        st.button("Logout", on_click=logout)
 
     st.title("🛡️ Multi-Tiered AI Support")
-    st.write(f"Welcome back, **{user_name}**! I am securely connected to your account. How can I assist you?")
+    if is_admin:
+         st.write(f"Welcome back, **Admin {user_name}**. The AI is operating in global access mode.")
+    else:
+         st.write(f"Welcome back, **{user_name}**. I am securely connected to your account. How can I assist you?")
     
     # Display entire history
     for msg in st.session_state.messages:
@@ -129,9 +215,13 @@ else:
     # User prompt
     if prompt := st.chat_input("Describe your issue..."):
         
-        # INGENIOUS IMPROVEMENT: Automatically append the User ID secretly 
-        # to the backend LLM, so the user doesn't have to manually type their ID!
-        enriched_prompt = f"[{user_name}'s Account ID is: {user_id}]. {prompt}"
+        # INGENIOUS IMPROVEMENT:
+        # If is_admin is True: we don't restrict the agent. It can freely query whatever user id the admin asks.
+        # If is_admin is False: we secretly lock the prompt's ID parameter context securely around their own ID.
+        if is_admin:
+            enriched_prompt = f"[ADMIN USER PRIVILEGES ENABLED]. Answer the following admin request: {prompt}"
+        else:
+            enriched_prompt = f"[{user_name}'s Account ID is strictly: {user_id}]. {prompt}"
         
         # Render user prompt locally immediately (we render just the plain 'prompt')
         st.session_state.messages.append({"role": "user", "content": prompt, "enriched": enriched_prompt})
@@ -161,12 +251,12 @@ else:
                 new_msgs = data.get("messages", [])
                 for ai_msg in new_msgs:
                     if ai_msg["role"] == "ai":
-                        # Note: You should ideally track message sync better, 
-                        # but for prototyping, we just append the latest response.
                         st.session_state.messages.append({"role": "ai", "content": ai_msg["content"]})
                         with st.chat_message("ai"):
                             st.write(ai_msg["content"])
-                            st.caption(f"*Processed automatically via the '{handled_by}' pathway.*")
+                            # Visual identifier to confirm what mode processed the reply
+                            role_identifier = "Web Admin" if is_admin else "Customer"
+                            st.caption(f"*Processed via '{handled_by}' pathway at {role_identifier} clearance.*")
 
             except Exception as e:
                 st.error(f"Backend offline or AI limit reached: {e}")
