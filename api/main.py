@@ -29,7 +29,7 @@ async def process_chat(request: ChatRequest):
     """
     config = {
         "configurable": {"thread_id": request.thread_id},
-        "recursion_limit": 5
+        "recursion_limit": 20
     }
     
     # 1. Check if the thread is currently paused waiting for human input
