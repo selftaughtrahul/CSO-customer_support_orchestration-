@@ -30,11 +30,23 @@ from datetime import date
 # ---------------------------------------------------------------------------
 
 def _serialize(rows):
+    """
+    Cleans DB query results before passing to the LLM.
+    Drops None and empty string values entirely to massively save token usage.
+    """
     if isinstance(rows, list):
+        cleaned_rows = []
         for row in rows:
+            cleaned_row = {}
             for k, v in row.items():
-                if v is not None and not isinstance(v, (int, float, str, bool)):
-                    row[k] = str(v)
+                if v is None or v == "":
+                    continue  # skip empty values to save tokens
+                if not isinstance(v, (int, float, str, bool)):
+                    cleaned_row[k] = str(v)
+                else:
+                    cleaned_row[k] = v
+            cleaned_rows.append(cleaned_row)
+        return cleaned_rows
     return rows
 
 
@@ -104,7 +116,7 @@ def get_orders_filtered(
     min_amount:     Optional[float] = None,
     order_code:     Optional[str]   = None,
 
-    limit: int = 100,
+    limit: int = 25,  # Reduced default limit from 100 to 25 to save tokens
 ):
     """
     ★ PRIMARY ORDER QUERY TOOL ★
