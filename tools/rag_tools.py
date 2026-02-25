@@ -10,7 +10,7 @@ embed_model = get_embedding_model()
 vectorstore = Chroma(persist_directory=settings.CHROMA_DB_DIR, embedding_function=embed_model)
 
 # 2. Create a Retriever
-retriever = vectorstore.as_retriever(search_kwargs={"k": 3}) # Returns top 3 relevant docs
+retriever = vectorstore.as_retriever(search_kwargs={"k": 1}) # Returns top 3 relevant docs
 
 # 3. Create the Tool
 # This tool will automatically format the retrieved docs into a readable string
