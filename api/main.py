@@ -4,6 +4,27 @@ from typing import List, Dict, Any
 from langchain_core.messages import HumanMessage
 from core.graph import app  # The compiled LangGraph application
 from core.db import get_user_role, get_user_info
+import json
+import os
+from datetime import datetime
+
+LOG_FILE = "chat_history_log.jsonl"
+
+def append_to_chat_log(thread_id: str, user_id: int, user_message: str, ai_response: str, category: str):
+    """Saves chat interactions to a structured JSONL file for future fine-tuning/analysis."""
+    log_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "thread_id": thread_id,
+        "user_id": user_id,
+        "user_message": user_message,
+        "ai_response": ai_response,
+        "category": category
+    }
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+    except Exception as e:
+        print(f"[Logger] Failed to write to chat log: {e}")
 
 server = FastAPI(
     title="Customer Support Orchestrator",
@@ -72,11 +93,16 @@ async def process_chat(request: ChatRequest):
         # 4. Check if the interaction caused a new pause
         new_state = app.get_state(config)
         status = "paused" if new_state.next else "active"
+        category = final_state.get("ticket_category", "unknown")
             
+        # 5. Log the interaction to file
+        ai_response_text = formatted_messages[0]["content"] if formatted_messages else ""
+        append_to_chat_log(request.thread_id, request.user_id, request.message, ai_response_text, category)
+
         return ChatResponse(
             status=status,
             messages=formatted_messages,
-            category=final_state.get("ticket_category", "unknown")
+            category=category
         )
         
     except Exception as e:
