@@ -46,6 +46,8 @@ checkpoints.sqlite
 chroma_db/
 *.db
 *.sqlite3
+*.db-shm
+*.db-wal
 
 # Logs
 logs/
