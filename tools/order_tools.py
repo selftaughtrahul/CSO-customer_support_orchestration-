@@ -32,24 +32,27 @@ def _serialize(rows, array_name="data"):
     """
     Serializes DB query results into TOON (Token-Oriented Object Notation).
     This tabular string format completely eliminates repetitive JSON keys!
-    Format:
-    data[2]{order_id,status,town}:
-    1234,4,"Chandigarh"
-    1235,3,"Mohali"
+    Dynamically strips out any columns that are entirely null/empty across all rows.
     """
     if not isinstance(rows, list) or not rows:
         return rows
         
     if isinstance(rows[0], dict):
-        # Extract all unique keys while preserving order
-        keys = list(rows[0].keys())
+        # 1. Find keys that have at least one non-empty value across ALL rows
+        all_keys = list(rows[0].keys())
+        active_keys = []
+        for k in all_keys:
+            if any(row.get(k) is not None and row.get(k) != "" for row in rows):
+                active_keys.append(k)
+                
+        # 2. Build header and rows using ONLY active_keys
         length = len(rows)
-        header = f"{array_name}[{length}]{{{','.join(keys)}}}:"
+        header = f"{array_name}[{length}]{{{','.join(active_keys)}}}:"
         
         toon_lines = [header]
         for row in rows:
             row_vals = []
-            for k in keys:
+            for k in active_keys:
                 v = row.get(k)
                 if v is None or v == "":
                     row_vals.append("null")
