@@ -29,24 +29,41 @@ from datetime import date
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-def _serialize(rows):
+def _serialize(rows, array_name="data"):
     """
-    Cleans DB query results before passing to the LLM.
-    Drops None and empty string values entirely to massively save token usage.
+    Serializes DB query results into TOON (Token-Oriented Object Notation).
+    This tabular string format completely eliminates repetitive JSON keys!
+    Format:
+    data[2]{order_id,status,town}:
+    1234,4,"Chandigarh"
+    1235,3,"Mohali"
     """
-    if isinstance(rows, list):
-        cleaned_rows = []
+    if not isinstance(rows, list) or not rows:
+        return rows
+        
+    if isinstance(rows[0], dict):
+        # Extract all unique keys while preserving order
+        keys = list(rows[0].keys())
+        length = len(rows)
+        header = f"{array_name}[{length}]{{{','.join(keys)}}}:"
+        
+        toon_lines = [header]
         for row in rows:
-            cleaned_row = {}
-            for k, v in row.items():
+            row_vals = []
+            for k in keys:
+                v = row.get(k)
                 if v is None or v == "":
-                    continue  # skip empty values to save tokens
-                if not isinstance(v, (int, float, str, bool)):
-                    cleaned_row[k] = str(v)
+                    row_vals.append("null")
+                elif isinstance(v, (int, float, bool)):
+                    row_vals.append(str(v))
                 else:
-                    cleaned_row[k] = v
-            cleaned_rows.append(cleaned_row)
-        return cleaned_rows
+                    # Escape internal quotes and wrap in double quotes
+                    s = str(v).replace('"', '""')
+                    row_vals.append(f'"{s}"')
+            toon_lines.append(",".join(row_vals))
+            
+        return "\n".join(toon_lines)
+        
     return rows
 
 
