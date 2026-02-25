@@ -1,21 +1,16 @@
-from langgraph.graph import StateGraph,START, END
+from langgraph.graph import StateGraph, START, END
 from core.state import SupportState
 
 # Import modular nodes
 from agents.router import router_node
 from agents.general import general_agent_node
-from agents.billing import billing_agent_node
-from agents.tech import tech_agent_node
-
+from agents.order import order_agent_node
+from agents.subscription import subscription_agent_node
+from agents.wallet import wallet_agent_node
 from agents.escalation import human_escalation_node
+
 from langgraph.checkpoint.sqlite import SqliteSaver
-
-
-
-
-
-
-
+import sqlite3
 
 # 1. Initialize the Graph
 workflow = StateGraph(SupportState)
@@ -23,10 +18,10 @@ workflow = StateGraph(SupportState)
 # 2. Add our modular Agents as executable Nodes
 workflow.add_node("router", router_node)
 workflow.add_node("general_agent", general_agent_node)
-workflow.add_node("billing_agent", billing_agent_node)
-workflow.add_node("tech_agent", tech_agent_node)
+workflow.add_node("order_agent", order_agent_node)
+workflow.add_node("subscription_agent", subscription_agent_node)
+workflow.add_node("wallet_agent", wallet_agent_node)
 workflow.add_node("human_escalation", human_escalation_node)
-
 
 # 3. Define the custom Routing Logic (The Switchboard)
 def route_to_department(state: SupportState):
@@ -36,16 +31,17 @@ def route_to_department(state: SupportState):
     
     if needs_esc:
         return "human_escalation"    
-    if category == "billing":
-        return "billing_agent"
-    elif category == "technical":
-        return "tech_agent"        
+    
+    if category == "order":
+        return "order_agent"
+    elif category == "subscription":
+        return "subscription_agent"
+    elif category == "wallet":
+        return "wallet_agent"
     else:
         return "general_agent"
-    
 
-
-import sqlite3
+# Persistent Memory Checkpointer
 memory = SqliteSaver(sqlite3.connect("checkpoint.db", check_same_thread=False))
 
 # 4. Draw the Edges
@@ -57,8 +53,9 @@ workflow.add_conditional_edges("router", route_to_department)
 
 # After a specialized agent acts (and returns its answer/tool output) the cycle ends
 workflow.add_edge("general_agent", END)
-workflow.add_edge("billing_agent", END)
-workflow.add_edge("tech_agent", END)
+workflow.add_edge("order_agent", END)
+workflow.add_edge("subscription_agent", END)
+workflow.add_edge("wallet_agent", END)
 
 # 5. Compile the executable application
 app = workflow.compile(
@@ -66,12 +63,11 @@ app = workflow.compile(
     interrupt_before=["human_escalation"] # Graph freezes here
 )
 
-
 if __name__ == "__main__":
     from langchain_core.messages import HumanMessage
     
-    # Send a mock ticket to test Groq/Gemini LLM functionality
-    test_input = {"messages": [HumanMessage(content="Check my billing status for USER_101")]}
-    final_state = app.invoke(test_input)
+    # Send a mock ticket to test LLM functionality
+    test_input = {"messages": [HumanMessage(content="Why did my milk not arrive today? Is my subscription active?")]}
+    final_state = app.invoke(test_input, config={"configurable": {"thread_id": "test_1"}})
     
     print("Final State Dictionary:", final_state)
