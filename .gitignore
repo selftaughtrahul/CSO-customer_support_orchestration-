@@ -59,3 +59,4 @@ logs/
 # User Specific Exclusions
 Technical_Guides/
 docs/
+database_schema.json
