@@ -4,6 +4,7 @@ from core.config import Config
 from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
+from langchain_anthropic import ChatAnthropic
 
 class LLMSetup:
     def __init__(self, temperature: float = 0.0, max_tokens: int = None, model_name: str = None):
@@ -39,7 +40,7 @@ class LLMSetup:
             
         # 2. GEMINI (Google)
         elif provider == "gemini":
-            self.final_model_name = self.requested_model_name or "gemini-1.5-flash"
+            self.final_model_name = self.requested_model_name or "gemini-2.5-flash"
             return ChatGoogleGenerativeAI(
                 model=self.final_model_name,
                 temperature=self.temperature,
@@ -57,6 +58,15 @@ class LLMSetup:
                 huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN") 
             )
             return ChatHuggingFace(llm=llm_endpoint)
+            
+        # 4. ANTHROPIC (Claude)
+        elif provider == "anthropic":
+            self.final_model_name = self.requested_model_name or "claude-3-5-sonnet-latest"
+            return ChatAnthropic(
+                model_name=self.final_model_name,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens or 1024
+            )
             
         else:
             raise ValueError(f"Unknown LLM_PROVIDER: {provider}. Please check your .env file.")
