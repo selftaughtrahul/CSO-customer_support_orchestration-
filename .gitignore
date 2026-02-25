@@ -52,6 +52,8 @@ chroma_db/
 # Logs
 logs/
 *.log
+*.jsonl
+chat_history_log.jsonl
 
 # Mac OS
 .DS_Store
