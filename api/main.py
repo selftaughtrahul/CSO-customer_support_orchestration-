@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Any
 from langchain_core.messages import HumanMessage
 from core.graph import app  # The compiled LangGraph application
+from core.db import get_user_role, get_user_info
 
 server = FastAPI(
     title="Customer Support Orchestrator",
@@ -14,6 +15,8 @@ server = FastAPI(
 class ChatRequest(BaseModel):
     thread_id: str
     message: str
+    user_id: int       # Logged-in user's ID from sp_users
+                       # user_type=1 → admin | user_type=4 → customer
 
 class ChatResponse(BaseModel):
     status: str # "active", "paused", "resolved", "error"
@@ -41,9 +44,19 @@ async def process_chat(request: ChatRequest):
             category="escalation"
         )
     
-    # 2. Submit new user utterance 
+    # 2. Resolve role from DB (user_type=1 → admin, user_type=4 → customer)
+    role = get_user_role(request.user_id)
+
+    # 3. Submit new user utterance with identity context in state
     try:
-        final_state = app.invoke({"messages": [HumanMessage(content=request.message)]}, config=config)
+        final_state = app.invoke(
+            {
+                "messages": [HumanMessage(content=request.message)],
+                "user_id": request.user_id,
+                "role": role,
+            },
+            config=config,
+        )
         
         # 3. Format response for the frontend - return ONLY the latest AI message
         formatted_messages = []
