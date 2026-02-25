@@ -7,6 +7,7 @@ import sys
 import os
 import io
 import re
+import time
 import pandas as pd
 
 # Add the project root to sys.path so we can import core.db securely
@@ -46,11 +47,12 @@ def _parse_markdown_table(md_text: str):
         return None
 
 
-def render_ai_response(content: str, label: str = ""):
+def render_ai_response(content: str, label: str = "", msg_key: str = ""):
     """
     Render an AI message intelligently:
     - If it contains a Markdown table → show as st.dataframe() with Excel download
     - Otherwise → show as st.markdown()
+    msg_key must be unique per widget instance to avoid Streamlit duplicate-key errors.
     """
     # Safely coerce to string — prevents TypeError if content is list/dict
     if not isinstance(content, str):
@@ -85,7 +87,7 @@ def render_ai_response(content: str, label: str = ""):
                 data=buf.getvalue(),
                 file_name=f"{label or 'orders'}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key=f"dl_{hash(content)}",
+                key=f"dl_{msg_key}",   # ← unique per message via index
             )
         else:
             st.markdown(table_md)   # fallback
@@ -298,11 +300,16 @@ else:
     else:
          st.write(f"Welcome back, **{user_name}**. I am securely connected to your account. How can I assist you?")
     
-    # Display entire history
-    for msg in st.session_state.messages:
+    # Display entire history — use enumerate for unique per-message widget keys
+    for idx, msg in enumerate(st.session_state.messages):
         with st.chat_message(msg["role"]):
             if msg["role"] == "ai":
-                render_ai_response(msg["content"])
+                render_ai_response(msg["content"], label=msg.get("pathway", ""), msg_key=str(idx))
+                elapsed = msg.get("elapsed_s")
+                pathway  = msg.get("pathway", "")
+                role_id  = "Web Admin" if is_admin else "Customer"
+                if elapsed is not None:
+                    st.caption(f"*Via '{pathway}' · {role_id} · ⏱️ {elapsed:.2f}s*")
             else:
                 st.markdown(msg["content"])
             
@@ -323,6 +330,7 @@ else:
             st.write(prompt)
 
         # Trigger backend orchestrator via REST protocol
+        t_start = time.perf_counter()   # ← start timer
         with st.spinner("Analyzing intent and securely searching your datasets..."):
             try:
                 resp = requests.post(
@@ -345,15 +353,19 @@ else:
                     st.error(f"🛑 Thread Blocked. Escalated due to: {handled_by}")
                     st.info("A human administrator will review this ticket.")
 
-                # Filter out historical messages to strictly print only the newest ones
-                new_msgs = data.get("messages", [])
+                # Store AI message then rerun — history loop renders it with a unique index key
+                elapsed_s = time.perf_counter() - t_start
+                new_msgs  = data.get("messages", [])
                 for ai_msg in new_msgs:
                     if ai_msg["role"] == "ai":
-                        st.session_state.messages.append({"role": "ai", "content": ai_msg["content"]})
-                        with st.chat_message("ai"):
-                            render_ai_response(ai_msg["content"], label=handled_by)
-                            role_identifier = "Web Admin" if is_admin else "Customer"
-                            st.caption(f"*Processed via '{handled_by}' pathway at {role_identifier} clearance.*")
+                        st.session_state.messages.append({
+                            "role":      "ai",
+                            "content":   ai_msg["content"],
+                            "elapsed_s": elapsed_s,
+                            "pathway":   handled_by,
+                        })
+                # Single rerun renders everything via the history loop with unique keys
+                st.rerun()
 
             except Exception as e:
                 st.error(f"Backend offline or AI limit reached: {e}")
