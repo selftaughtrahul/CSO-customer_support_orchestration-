@@ -22,7 +22,14 @@ class TicketClassification(BaseModel):
 
 # 2. Create the Router Agent
 def create_router_agent():
-    llm = get_llm()
+    # ⚡ Router always uses Groq llama-3.1-8b-instant regardless of global LLM_PROVIDER
+    # Fast 8B model is perfect for 5-way classification and has low token usage
+    from langchain_groq import ChatGroq
+    from core.config import Config
+    llm = ChatGroq(
+        model="llama-3.1-8b-instant",
+        temperature=0,
+    )
     
     # Bind the Pydantic schema to the LLM
     # This forces the LLM to return JSON that matches our TicketClassification model
