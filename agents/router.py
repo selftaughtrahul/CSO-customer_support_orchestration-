@@ -8,8 +8,8 @@ from langchain_core.tools import tool
 class TicketClassification(BaseModel):
     """Schema for routing the support ticket."""
     category: str = Field(
-        ..., 
-        description="The category of the issue. Must be one of: order, subscription, wallet, general, or escalate."
+        ...,
+        description="The category of the issue. Must be one of: order, subscription, wallet, product, general, or escalate."
     )
     needs_escalation: bool = Field(
         False, 
@@ -63,6 +63,30 @@ Your job is to analyze the customer's message and route it to the correct depart
 - Setting up / pausing / cancelling a recurring subscription plan
 - Subscription plan details, plan type (daily / alternate day / custom)
 - Why a scheduled daily milk delivery did not arrive
+- **Vacation management**: marking, viewing, or cancelling vacation days
+- Skipping delivery for a day / date range
+- "I won't be home", "skip delivery on [date]", "chhutti mark karo"
+- Checking upcoming vacation dates or past vacation history
+- ANY query with keywords: vacation, chhutti, holiday, skip delivery, mark vacation,
+  cancel vacation, won't be home, not available for delivery, upcoming vacations
+
+### Route to category="product" for:
+- Browsing the product catalog: "What products do you have?", "Show milk products"
+- Product pricing / rate questions: "Price of toned milk?", "Milk ka rate kya hai?"
+- Product availability: "Is paneer available?", "Do you sell ghee?"
+- Product details, descriptions, sizes, variants, packaging, container info
+- Active promotions / offers: "Any offers today?", "Free milk offer kya hai?"
+- Products eligible for subscription: "Which products can I subscribe to?"
+- Featured or highlighted products
+- ANY query with keywords: product catalog, price, MRP, rate, available products,
+  offer, promotion, variant, sizes, what do you sell, kya milta hai, featured product,
+  subscribe karne wale products, paneer, ghee, butter, curd, cream (when asking price/availability)
+
+⚠️ IMPORTANT DISTINCTION — product vs order:
+- "What is the price of milk?" → product  (catalog / pricing question)
+- "How much milk was sold today?" → order  (sales analytics)
+- "Is toned milk available?" → product
+- "Top selling products" → order  (analytics)
 
 ### Route to category="wallet" for:
 - Wallet balance, wallet recharge, cashback schemes, ledger entries, payment modes
@@ -83,7 +107,21 @@ Your job is to analyze the customer's message and route it to the correct depart
 - "Order cancel kyun hua" → order
 - "Delivered orders" → order
 - "Mere subscription ka status" → subscription
+- "Chhutti mark karo" → subscription
+- "Vacation cancel karo" → subscription
+- "Kal delivery mat karo" → subscription
+- "Upcoming vacations dikhao" → subscription
+- "Is mahine ki vacations" → subscription
+- "I won't be home tomorrow" → subscription
+- "Skip milk delivery on 10th March" → subscription
 - "Mera wallet balance" → wallet
+- "Kya kya milta hai?" → product
+- "Milk ka rate kya hai?" → product
+- "Paneer available hai?" → product
+- "Koi offer chal raha hai?" → product
+- "Daily delivery ke liye kya le sakte hain?" → product
+- "Full Cream Milk ki detail batao" → product
+- "Featured products dikhao" → product
 
 Always provide a brief summary of the issue.
 """
