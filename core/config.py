@@ -10,7 +10,13 @@ class Config:
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
     GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
     HUGGINGFACEHUB_API_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
-    
+
+    # Auto-fallback mode: try primary, silently switch to fallback on any failure
+    AUTO_PRIMARY_PROVIDER  = os.getenv("AUTO_PRIMARY_PROVIDER",  "gemini").lower()
+    AUTO_PRIMARY_MODEL     = os.getenv("AUTO_PRIMARY_MODEL",     "gemini-2.5-flash")
+    AUTO_FALLBACK_PROVIDER = os.getenv("AUTO_FALLBACK_PROVIDER", "groq").lower()
+    AUTO_FALLBACK_MODEL    = os.getenv("AUTO_FALLBACK_MODEL",    "llama-3.1-8b-instant")
+
     # RAG Settings
     EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "huggingface").lower()
     EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL")
@@ -20,15 +26,30 @@ class Config:
 
     # Validation helper
     @staticmethod
+    def _check_key(provider: str, label: str):
+        key_map = {
+            "groq":        ("GROQ_API_KEY",            os.getenv("GROQ_API_KEY")),
+            "gemini":      ("GOOGLE_API_KEY",           os.getenv("GOOGLE_API_KEY")),
+            "huggingface": ("HUGGINGFACEHUB_API_TOKEN", os.getenv("HUGGINGFACEHUB_API_TOKEN")),
+            "anthropic":   ("ANTHROPIC_API_KEY",        os.getenv("ANTHROPIC_API_KEY")),
+        }
+        if provider not in key_map:
+            raise ValueError(f"Unknown provider '{provider}' for {label}. "
+                             "Valid: groq, gemini, huggingface, anthropic")
+        env_name, value = key_map[provider]
+        if not value:
+            raise ValueError(f"{env_name} is missing from .env (required for {label} provider={provider})")
+
+    @staticmethod
     def validate_keys():
-        if Config.LLM_PROVIDER == "anthropic" and not os.getenv("ANTHROPIC_API_KEY"):
-            raise ValueError("ANTHROPIC_API_KEY is missing from .env")
-        if Config.LLM_PROVIDER == "groq" and not os.getenv("GROQ_API_KEY"):
-            raise ValueError("GROQ_API_KEY is missing from .env")
-        if Config.LLM_PROVIDER == "gemini" and not os.getenv("GOOGLE_API_KEY"):
-            raise ValueError("GOOGLE_API_KEY is missing from .env")
-        if Config.LLM_PROVIDER == "huggingface" and not os.getenv("HUGGINGFACEHUB_API_TOKEN"):
-            raise ValueError("HUGGINGFACEHUB_API_TOKEN is missing from .env")
+        provider = Config.LLM_PROVIDER
+
+        if provider == "auto":
+            # Validate both primary and fallback providers
+            Config._check_key(Config.AUTO_PRIMARY_PROVIDER,  "AUTO_PRIMARY")
+            Config._check_key(Config.AUTO_FALLBACK_PROVIDER, "AUTO_FALLBACK")
+        else:
+            Config._check_key(provider, "LLM_PROVIDER")
 
 # Run validation on import
 Config.validate_keys()
