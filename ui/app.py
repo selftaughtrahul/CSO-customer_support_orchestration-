@@ -9,6 +9,8 @@ import io
 import re
 import time
 import pandas as pd
+import random
+
 
 # Add the project root to sys.path so we can import core.db securely
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -331,7 +333,22 @@ else:
 
         # Trigger backend orchestrator via REST protocol
         t_start = time.perf_counter()   # ← start timer
-        with st.spinner("Analyzing intent and securely searching your datasets..."):
+        random_words = ["abra ka dabra", "cooking","Doing Magic", "Thinking"]
+        
+        random_words = [
+            "Abra ka dabra ✨",
+            "Cooking insights 🍳",
+            "Doing Magic 🪄",
+            "Thinking deeply 🤔",
+            "Crunching data 📊",
+            "Training neurons 🧠",
+            "Summoning AI spirits 🤖",
+            "Analyzing patterns 🔍"
+        ]
+        spinner_text = random.choice(random_words)
+
+
+        with st.spinner(spinner_text):
             try:
                 resp = requests.post(
                     API_URL, 
