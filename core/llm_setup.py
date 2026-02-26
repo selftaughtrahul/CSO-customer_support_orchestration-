@@ -21,6 +21,9 @@ class LLMSetup:
         # Initialize the LangChain ChatModel
         self.llm = self._initialize_llm()
         
+    # Default read timeout (seconds) for all LLM HTTP calls
+    _TIMEOUT = 120
+
     def _initialize_llm(self):
         """
         Dynamically load the LLM based on the .env configuration.
@@ -28,16 +31,17 @@ class LLMSetup:
         """
         provider = self.config.LLM_PROVIDER
 
-        
+
         # 1. GROQ (Llama 3 / Mixtral)
         if provider == "groq":
             self.final_model_name = self.requested_model_name or "llama-3.1-8b-instant"
             return ChatGroq(
                 model=self.final_model_name,
                 temperature=self.temperature,
-                max_tokens=self.max_tokens
+                max_tokens=self.max_tokens,
+                timeout=self._TIMEOUT,
             )
-            
+
         # 2. GEMINI (Google)
         elif provider == "gemini":
             self.final_model_name = self.requested_model_name or "gemini-2.5-flash"
@@ -45,9 +49,10 @@ class LLMSetup:
                 model=self.final_model_name,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
-                convert_system_message_to_human=True 
+                convert_system_message_to_human=True,
+                timeout=self._TIMEOUT,
             )
-            
+
         # 3. HUGGING FACE (Serverless Inference API)
         elif provider == "huggingface":
             self.final_model_name = self.requested_model_name or "meta-llama/Meta-Llama-3-8B-Instruct"
@@ -55,17 +60,19 @@ class LLMSetup:
                 repo_id=self.final_model_name,
                 temperature=self.temperature if self.temperature > 0 else 0.01,
                 max_new_tokens=self.max_tokens or 1024,
-                huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN") 
+                huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
+                timeout=self._TIMEOUT,
             )
             return ChatHuggingFace(llm=llm_endpoint)
-            
+
         # 4. ANTHROPIC (Claude)
         elif provider == "anthropic":
             self.final_model_name = self.requested_model_name or "claude-3-5-sonnet-latest"
             return ChatAnthropic(
                 model_name=self.final_model_name,
                 temperature=self.temperature,
-                max_tokens=self.max_tokens or 1024
+                max_tokens=self.max_tokens or 1024,
+                default_request_timeout=self._TIMEOUT,
             )
             
         else:
