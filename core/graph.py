@@ -7,6 +7,7 @@ from agents.general import general_agent_node
 from agents.order import order_agent_node
 from agents.subscription import subscription_agent_node
 from agents.wallet import wallet_agent_node
+from agents.product import product_agent_node
 from agents.escalation import human_escalation_node
 
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -21,6 +22,7 @@ workflow.add_node("general_agent", general_agent_node)
 workflow.add_node("order_agent", order_agent_node)
 workflow.add_node("subscription_agent", subscription_agent_node)
 workflow.add_node("wallet_agent", wallet_agent_node)
+workflow.add_node("product_agent", product_agent_node)
 workflow.add_node("human_escalation", human_escalation_node)
 
 # 3. Define the custom Routing Logic (The Switchboard)
@@ -38,6 +40,8 @@ def route_to_department(state: SupportState):
         return "subscription_agent"
     elif category == "wallet":
         return "wallet_agent"
+    elif category == "product":
+        return "product_agent"
     else:
         return "general_agent"
 
@@ -56,6 +60,7 @@ workflow.add_edge("general_agent", END)
 workflow.add_edge("order_agent", END)
 workflow.add_edge("subscription_agent", END)
 workflow.add_edge("wallet_agent", END)
+workflow.add_edge("product_agent", END)
 
 # 5. Compile the executable application
 app = workflow.compile(
