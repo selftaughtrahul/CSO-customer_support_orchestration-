@@ -54,17 +54,14 @@ pip install -r requirements.txt
 ```
 
 ### 3. Environment Variables (`.env`)
-Create or edit your `.env` file at the root of your project directory. Change the `LLM_PROVIDER` and `EMBEDDING_PROVIDER` to your preferred models.
-
-```dotenv
-LLM_PROVIDER=groq
-GROQ_API_KEY=your_groq_api_key
-GOOGLE_API_KEY=your_google_api_key
-
-# RAG configuration options
-EMBEDDING_PROVIDER=huggingface
-EMBEDDING_MODEL=all-MiniLM-L6-v2
+Copy the example env file and fill in your actual API keys:
+```bash
+cp .exampleenv .env
 ```
+Open `.env` and replace the placeholder values with your real credentials. At minimum you need:
+- An API key for your chosen `LLM_PROVIDER` (Groq, Gemini, Anthropic, or HuggingFace)
+- MySQL database credentials (if using the billing agent)
+- *(Optional)* LangSmith keys for tracing
 
 ---
 

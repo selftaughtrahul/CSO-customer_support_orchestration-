@@ -1,0 +1,49 @@
+# .env
+
+# ── LLM Provider ──────────────────────────────────────────────────────────────
+# Options: groq | gemini | huggingface | anthropic | auto
+#
+# auto  →  tries AUTO_PRIMARY first; on any failure (timeout, rate-limit, 5xx)
+#           transparently retries the same call on AUTO_FALLBACK.
+#
+# Single-provider examples:
+#   LLM_PROVIDER=gemini
+#   LLM_PROVIDER=groq
+#
+LLM_PROVIDER=auto
+
+# ── Auto-fallback chain (only used when LLM_PROVIDER=auto) ────────────────────
+AUTO_PRIMARY_PROVIDER=gemini
+AUTO_PRIMARY_MODEL=gemini-2.5-flash
+AUTO_FALLBACK_PROVIDER=groq
+AUTO_FALLBACK_MODEL=llama-3.1-8b-instant
+# ─────────────────────────────────────────────────────────────────────────────
+
+# API Keys
+
+ANTHROPIC_API_KEY=sk-ant-api03-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+GROQ_API_KEY=gsk_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+# HuggingFace model with excellent tool calling support for LangGraph
+MODEL_NAME=Qwen/Qwen2.5-72B-Instruct
+HUGGINGFACEHUB_API_TOKEN=hf_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+GOOGLE_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+# LangSmith Tracing
+LANGSMITH_TRACING=true
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+LANGSMITH_API_KEY=lsv2_pt_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+LANGSMITH_PROJECT="customer-support-orchestrator"
+
+EMBEDDING_PROVIDER=huggingface
+# Options: huggingface (e.g., all-MiniLM-L6-v2), google (e.g., models/embedding-001)
+EMBEDDING_MODEL=all-MiniLM-L6-v2
+
+DOCS_DIR=./docs
+CHROMA_DB_DIR=./chroma_db
+
+# MySQL Database
+MYSQL_HOST=your-db-host
+MYSQL_PORT=3306
+MYSQL_USER=your_db_user
+MYSQL_PASSWORD=your_db_password
+MYSQL_DATABASE=your_database_name

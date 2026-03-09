@@ -65,11 +65,13 @@ def build_index():
         import shutil
         shutil.rmtree(settings.CHROMA_DB_DIR)
 
-    Chroma.from_documents(
-        documents=splits,
-        embedding=get_embedding_model(),
-        persist_directory=settings.CHROMA_DB_DIR
+    vectorstore = Chroma(
+        persist_directory=settings.CHROMA_DB_DIR,
+        embedding_function=get_embedding_model()
     )
+
+    vectorstore.add_documents(splits)
+    vectorstore.persist()
 
     print(f"Database built with {len(splits)} chunks.")
 
